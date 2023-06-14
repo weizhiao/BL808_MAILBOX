@@ -229,6 +229,9 @@ static void fn_call(void (*fn)(), uint32_t argv[], uint32_t argc)
         case 1:
             fn(argv[0]);
             break;
+        case 2:
+            fn(argv[0],argv[1]);
+            break;
         case 3:
             fn(argv[0], argv[1], argv[2]);
             break;
