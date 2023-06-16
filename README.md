@@ -1,5 +1,5 @@
 # BL808_MAILBOX
-通过核间通信使得d0核心可以使用sd卡    
+通过核间通信使得运行freertos的d0核心可以使用sd卡    
 bouffalo_sdk是博流官方提供的sdk
 
 使用方法：  
