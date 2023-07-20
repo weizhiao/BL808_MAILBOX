@@ -15,6 +15,9 @@
 #define MAX_OP_NUM      10
 #define MAX_OP_ARGS_NUM 5
 
+#define MAILBOX_SYNC_ADDR 0x40000008
+#define MAILBOX_SYNC 0x55555555
+
 //函数对应的标号
 #define MBOX_FN_open    0
 #define MBOX_FN_read    1
@@ -85,7 +88,7 @@ int mailbox_send_signal(uint32_t op, uint32_t argc)
     BL_WR_REG(IPC_OTHER_BASE, IPC_CPU1_IPC_ILSHR, op);
     BL_WR_REG(IPC_OTHER_BASE, IPC_CPU1_IPC_ILSLR, argc);
 
-    LOG_W("Sent IPC Mailbox Singal: op: %d, argc %d\r\n", op, argc);
+    LOG_D("Sent IPC Mailbox Singal: op: %d, argc %d\r\n", op, argc);
     BL_WR_REG(IPC_OTHER_BASE, IPC_CPU1_IPC_ISWR, 1);
     return 0;
 }
@@ -211,6 +214,17 @@ FN3(read, ssize_t, int, void *, size_t)
 FN3(write, ssize_t, int, const void *, size_t)
 FN3(lseek, _off_t, int, _off_t, int)
 
+int mailbox_init()
+{
+    uint32_t *ptr = MAILBOX_SYNC_ADDR;
+    bflb_l1c_dcache_disable();
+    while(*ptr!=MAILBOX_SYNC){
+        __NOP();
+    }
+    bflb_l1c_dcache_enable();
+    return 0;
+}
+
 //M0
 #else
 #include <reent.h>
@@ -250,7 +264,7 @@ static void m0_handle_op(uint32_t op, uint32_t arg)
     bflb_l1c_dcache_disable();
     for (i = 0; i < arg; i++) {
         READ32(ptr, argv[i]);
-        LOG_W("argv%d:%d\r\n", i, argv[i]);
+        LOG_D("argv%d:%x\r\n", i, argv[i]);
     }
     ptr = org_ptr + 1;
     switch (cur_fn->result_type) {
@@ -268,14 +282,15 @@ void IPC_M0_IRQHandler(int irq, void *arg)
     uint32_t irqStatus = BL_RD_REG(IPC_SELF_BASE, IPC_CPU0_IPC_IRSRR);
     uint32_t op = BL_RD_REG(IPC_SELF_BASE, IPC_CPU1_IPC_ILSHR);
     uint32_t argc = BL_RD_REG(IPC_SELF_BASE, IPC_CPU1_IPC_ILSLR);
+    //清楚中断位
+    BL_WR_REG(IPC_SELF_BASE, IPC_CPU0_IPC_ICR, irqStatus);
 
-    LOG_W("Got IPC Mailbox op: %d argc: %d\r\n", op, argc);
+    LOG_D("Got IPC Mailbox op: %d argc: %d\r\n", op, argc);
 
     m0_handle_op(op, argc);
 
-    LOG_W("Signal Handler Done\r\n");
-    //清楚中断位
-    BL_WR_REG(IPC_SELF_BASE, IPC_CPU0_IPC_ICR, irqStatus);
+    LOG_D("Signal Handler Done\r\n");
+
 }
 
 int mailbox_init()
@@ -284,6 +299,12 @@ int mailbox_init()
     bflb_irq_attach(IPC_IRQn, IPC_M0_IRQHandler, NULL);
     BL_WR_REG(IPC_SELF_BASE, IPC_CPU0_IPC_IUSR, 0xffffffff);
     bflb_irq_enable(IPC_IRQn);
+
+    bflb_l1c_dcache_disable();
+
+    uint32_t *ptr=MAILBOX_SYNC_ADDR;
+    *ptr=MAILBOX_SYNC;
+    bflb_l1c_dcache_enable();
 
     return 0;
 }
